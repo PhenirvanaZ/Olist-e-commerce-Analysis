@@ -1,0 +1,660 @@
+### ECON7990 final Project -- Olist e-commerce analysis
+
+### Background:
+### About Olist: founded in 2016, a Brazilian e-commerce marketplace integrator, an SMB commerce enabler ecosystem that specializes in the fields of logistics and capital.Olist is leading the way as the #1 commerce enabler for SMBs in Brazil, now expanding globally.
+### The company started with a single core connecting merchants to marketplaces and evolved to a complete ecosystem of integrated products in 3 dimensions.
+### (1) Commerce:
+###    (a) Olist Store is the leading solution to sell on marketplaces;
+###    (b) Olist Shops is our ecommerce solution, mobile first, natively connected to social media, present in 180 countries.
+### (2) Logistics: Olist Pax is a leading cloud based logistics and fulfillment network provider operating in Brazil.
+### (3) Capital: Olist Credit and Olist Pay.
+
+### Business understanding:
+### As a e-commerce marketplace integrator, Olist connects merchants to marketplaces. Both clients(sellers) and market(customers) are important and need better understanding.
+### 1. sellers performance: analyzing sales amount, late shipment rate, average review score in Olist platform => explore sellers advantage/disadvantage, dig sellers demand, provide better service
+### 2. consumers behavior: analyzing consumers lifetime value, segmentation => help sellers with precision marketing and advertising
+### Reference: https://www.crunchbase.com/organization/olist
+
+import os
+import random
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from functools import reduce
+import datetime
+from datetime import date
+pd.set_option('display.float_format',lambda x : '%.3f' % x)
+pd.set_option('display.max_columns',None)
+
+dataset_path = 'D:/DABE/ECON7990/final/olist'
+
+files = os.listdir(dataset_path)
+print(f'The dataset contains {len(files)} files:')
+for file in files:
+    print(f'    * {file}')
+
+### Open Datasets
+## Orders
+csv_file_name = 'olist_orders_dataset.csv'
+csv_file_path = os.path.join(dataset_path, csv_file_name)
+df_order = pd.read_csv(csv_file_path)
+df_order.head()
+
+## Order items
+csv_file_name = 'olist_order_items_dataset.csv'
+csv_file_path = os.path.join(dataset_path, csv_file_name)
+df_order_items = pd.read_csv(csv_file_path)
+df_order_items.head()
+
+## Order payments
+csv_file_name = 'olist_order_payments_dataset.csv'
+csv_file_path = os.path.join(dataset_path, csv_file_name)
+df_order_payments = pd.read_csv(csv_file_path)
+df_order_payments.head()
+
+## Order reviews
+csv_file_name = 'olist_order_reviews_dataset.csv'
+csv_file_path = os.path.join(dataset_path, csv_file_name)
+df_order_reviews = pd.read_csv(csv_file_path)
+df_order_reviews.head()
+
+## Customers
+csv_file_name = 'olist_customers_dataset.csv'
+csv_file_path = os.path.join(dataset_path, csv_file_name)
+df_customers = pd.read_csv(csv_file_path)
+df_customers.head()
+
+## Geolocation
+csv_file_name = 'olist_geolocation_dataset.csv'
+csv_file_path = os.path.join(dataset_path, csv_file_name)
+df_geolocation = pd.read_csv(csv_file_path)
+df_geolocation.head()
+
+## Products
+csv_file_name = 'olist_products_dataset.csv'
+csv_file_path = os.path.join(dataset_path, csv_file_name)
+df_products = pd.read_csv(csv_file_path)
+df_products.head()
+
+## Sellers
+csv_file_name = 'olist_sellers_dataset.csv'
+csv_file_path = os.path.join(dataset_path, csv_file_name)
+df_sellers = pd.read_csv(csv_file_path)
+df_sellers.head()
+
+## Category English translation
+csv_file_name = 'product_category_name_translation.csv'
+csv_file_path = os.path.join(dataset_path, csv_file_name)
+df_category_translation = pd.read_csv(csv_file_path)
+df_category_translation.head()
+
+## Merge order, order items, order payments and order reviews by order id
+dfs = [df_order, df_order_items, df_order_payments, df_order_reviews]
+dfs = reduce(lambda left,right: pd.merge(left,right,on='order_id'), dfs)
+dfs
+
+## Merge other datasets
+df_all = pd.merge(dfs, df_customers, how='inner',
+                  left_on='customer_id',
+                  right_on='customer_id')
+df_all = pd.merge(df_all, df_products, how='inner',
+                  left_on='product_id',
+                  right_on='product_id')
+df_all = pd.merge(df_all, df_sellers, how='inner',
+                  left_on='seller_id',
+                  right_on='seller_id')
+df_all.head()
+df_all.shape
+df_all.isna().sum()
+
+## drop columns
+df_all.drop(["review_comment_title", "review_comment_message", "review_creation_date",
+             "review_answer_timestamp", "product_weight_g", "product_length_cm",
+             "product_height_cm", "product_width_cm"], axis=1, inplace = True)
+
+## sort by product id, subsort by product category name, then fill the NA with last row's category name
+df_all2 = df_all.sort_values(by = ["product_id", "product_category_name"])
+df_all2["product_category_name"].fillna(method='ffill',inplace=True)
+df_all2.isna().sum()
+
+df_all2.shape
+df_all2.info()
+
+## transfer time value to date format
+df_all2['purchase_date'] = pd.to_datetime(df_all2['order_purchase_timestamp'])
+
+df_all2['delivered_carrier_date'] = pd.to_datetime(df_all2['order_delivered_carrier_date'])
+df_all2['delivered_carrier_date'] = df_all2['delivered_carrier_date'].dt.to_period('D')
+
+df_all2['delivered_date'] = pd.to_datetime(df_all2['order_delivered_customer_date'])
+df_all2['delivered_date'] = df_all2['delivered_date'].dt.to_period('D')
+
+df_all2['estimated_delivery_date'] = pd.to_datetime(df_all2['order_estimated_delivery_date'])
+df_all2['estimated_delivery_date'] = df_all2['estimated_delivery_date'].dt.to_period('D')
+
+df_all2['payment_date'] = pd.to_datetime(df_all2['order_approved_at'])
+df_all2['payment_date'] = df_all2['payment_date'].dt.to_period('D')
+
+df_all2.drop(["order_approved_at","order_purchase_timestamp", "order_delivered_carrier_date",
+              "order_delivered_customer_date", "order_estimated_delivery_date",
+              "shipping_limit_date"], axis=1, inplace = True)
+df_all2.drop_duplicates(inplace = True)
+df_all2.info()
+
+# replace category name
+df_all2 = pd.merge(df_all2, df_category_translation, how='inner',
+                  left_on='product_category_name',
+                  right_on='product_category_name')
+df_all2.drop("product_category_name", axis=1, inplace = True)
+df_all2 = df_all2.rename(columns={"product_category_name_english": "product_category_name",
+                                  'product_name_lenght':'product_name_length',
+                                  'product_description_lenght':'product_description_length'})
+df_all2.head()
+df_all2.describe()
+df_all2.isna().sum()
+
+df_all2["purchase_date"].min()
+df_all2["purchase_date"].max()
+
+### Visualization
+##Top 20 Sales Categories
+sns.set_theme(style="whitegrid")
+plt.subplots()
+product_counts=df_all2.groupby(['product_category_name']).size().sort_values(ascending = False)[:20]
+product_counts.plot(kind='barh',figsize=(12,6),title='Top 20 Sales Categories')
+plt.style.use('ggplot')
+
+## Payment methods
+plt.subplots
+payment_counts = df_all2["payment_type"][df_all["payment_type"] != 'not_defined'].value_counts()
+explode = [0, 0.1, 0, 0]
+payment_counts.plot(kind="pie", autopct='%1.1f%%', pctdistance=0.6, shadow=False, figsize=(8, 8), explode=explode,
+                    startangle=90, labels=None, legend=True)
+
+plt.title("Payment methods", fontweight='bold', size=16)
+
+## Installments
+
+plt.subplots(figsize=(12, 8))
+sns.distplot(df_all2['payment_installments'].dropna(),bins=25)
+plt.title("Payment Installments", fontweight='bold', size=16)
+
+## Categories' review score ranking
+seller_review=df_all2.loc[:,['product_category_name','review_score']]
+score=seller_review.groupby(['product_category_name']).mean()
+owns=seller_review['product_category_name'].value_counts()
+#设定条件为评价数大于500条
+scores=score[owns>500]
+scores_sorted=scores.loc[:,'review_score'].sort_values(ascending = True)
+#查看前10名
+print(scores_sorted.tail(10))
+
+plt.subplots()
+scores_sorted.plot(kind='barh',figsize=(12,6),title='Review Score Ranklist(reviews>500)')
+
+## Calculate number of customers by each state
+State_customer= df_all2.groupby('customer_state',as_index=False)['customer_id'].count().sort_values('customer_id',
+                                                                                              ascending=False)
+State_customer.columns=['State','Number of Customers']
+State_customer.head()
+
+## Calculate number of customers by each city
+City_customer= df_all2.groupby('customer_city',as_index=False)['customer_id'].count().sort_values('customer_id',
+                                                                                              ascending=False)
+City_customer.columns=['State','Number of Customers']
+City_customer.head()
+
+## Calculate number of spent by each state
+State_payment= df_all2.groupby('customer_state',as_index=False)['payment_value'].sum().sort_values('payment_value',
+                                                                                              ascending=False)
+State_payment.columns=['State','Payments']
+State_payment.head()
+
+## Calculate number of sellers by each state
+State_seller= df_all2.groupby('seller_state',as_index=False)['seller_id'].count().sort_values('seller_id',
+                                                                                                  ascending=False)
+State_seller.columns=['State','Number of Sellers']
+State_seller.head()
+
+fig, ax= plt.subplots(ncols=2, figsize=(20,5))
+sns.barplot(x='State', y='Number of Customers', data=State_customer.head(),
+           palette="Spectral", ax=ax[0])
+sns.barplot(x='State', y='Number of Sellers', data=State_seller.head(),
+           palette="icefire", ax=ax[1])
+ax[0].set_title('Top 5 States with highest number of Customers', fontsize=15)
+ax[1].set_title('Top 5 States with highest number of Sellers', fontsize=15)
+fig.tight_layout();
+
+## Heatmap: customers and sellers distribution
+import folium
+from folium.plugins import HeatMap
+df_geolocation = df_geolocation.drop_duplicates(subset='geolocation_zip_code_prefix', keep='first')
+
+dataNonDuplicates_customer = df_all.drop_duplicates(subset='customer_unique_id', keep='first')
+dataGeo_customer = pd.merge(dataNonDuplicates_customer[['order_status','customer_city','customer_state', 'customer_zip_code_prefix']],
+                                     df_geolocation,
+                                     left_on='customer_zip_code_prefix',
+                                     right_on='geolocation_zip_code_prefix')
+
+dataNonDuplicates_seller = df_all.drop_duplicates(subset='seller_id', keep='first')
+dataGeo_seller = pd.merge(dataNonDuplicates_seller[['order_status','seller_city','seller_state', 'seller_zip_code_prefix']],
+                                     df_geolocation,
+                                     left_on='seller_zip_code_prefix',
+                                     right_on='geolocation_zip_code_prefix')
+
+dataGeo_customer
+
+### Customers distribution
+mapCustomers = folium.Map(location=[-15.7941, -47.8825],
+                          tiles='cartodbpositron',
+                          width=800, height=600,
+                          zoom_start=5)
+
+HeatMap(data=dataGeo_customer[['geolocation_lat', 'geolocation_lng']],
+                     radius=13).add_to(mapCustomers)
+print('Active Consumers Map')
+mapCustomers
+
+### Sellers distribution
+mapSellers = folium.Map(location=[-15.7941, -47.8825],
+                          tiles='cartodbpositron',
+                          width=800, height=600,
+                          zoom_start=5)
+
+HeatMap(data=dataGeo_seller[['geolocation_lat', 'geolocation_lng']],
+                     radius=13).add_to(mapSellers)
+print('Active Sellers Map')
+mapSellers
+
+## Orders and sales
+fig, ax= plt.subplots()
+ax=df_all2.groupby('purchase_date')['order_id'].count().plot(figsize=(16,7), color='darkred')
+ax.set_title('Number of Orders over 2016-2018', fontsize=15);
+
+fig, ax= plt.subplots()
+ax=df_all2.groupby('purchase_date')['price'].sum().plot(figsize=(16,7), color='darkred')
+ax.set_title('Sales over 2016-2018', fontsize=15);
+
+### Sellers Analysis -- Sellers Quality Report
+## Preprocessing and cleaning data
+df_all3 = df_all2
+df_all3 = df_all3.dropna()
+df_all3.info()
+
+## drop delay days outliers
+df_all3['timeliness'] = (df_all3['estimated_delivery_date'] - df_all3['delivered_date'])/np.timedelta64(1, 'D')
+df_all3['delay_days'] = df_all3['timeliness']
+df_all3 = df_all3[df_all3["delay_days"] < 60]
+df_all3 = df_all3[df_all3["delay_days"] > -60]
+df_all3.loc[df_all3.delay_days < 0,'timeliness'] = 'delay'
+df_all3.loc[df_all3.delay_days >= 0,'timeliness'] = 'fast'
+df_all3.head()
+
+## create new dataframe for sellers analysis
+aggregation_functions = {'order_id':'count',
+                         'customer_id':'count',
+                         'order_item_id':'count',
+                         'freight_value':'median',
+                         'price':'sum',
+                         'review_score':'mean',
+                         'customer_unique_id':'count',
+                         'customer_state':'first' ,
+                         'product_name_length':'mean',
+                         'product_description_length':'mean',
+                         'product_photos_qty':'mean',
+                         'delivered_date':'median',
+                         'delivered_carrier_date':'median',
+                         'seller_state':'first',
+                         'timeliness':','.join
+                         }
+sellers = df_all3.groupby('seller_id').aggregate(aggregation_functions)
+
+## column rename
+sellers.rename(columns={'order_id':'total_order_amount',
+                        'price':'total_sales',
+                        'customer_id':'total_customer_id_amount',
+                        'customer_unique_id':'total_customer_unique_id',
+                        'delivered_date':'carrier_to_customer_average_delivery_time',
+                        'delivered_carrier_date':'seller_to_carrier_average_deliverytime',
+                        'review_score':'average_review_score'},inplace = True)
+
+## Find sellers history day
+df_seller_sale_history = df_all2.groupby('seller_id')['purchase_date'].agg({np.max,np.min}).rename(columns={'amin':'first_order', 'amax':'last_order'})
+df_seller_sale_history['seller_history_day']=(df_seller_sale_history['last_order']-df_seller_sale_history['first_order'])/np.timedelta64(1, 'D')
+df_seller_sale_history.reset_index(inplace=True)
+sellers.reset_index(inplace=True)
+
+seller_history_day_dict = dict(zip( df_seller_sale_history.seller_id, df_seller_sale_history.seller_history_day))
+sellers['seller_history_day'] = sellers['seller_id'].map(seller_history_day_dict)
+sellers.head()
+
+sellers.info()
+
+## late shipment rate (should < 4%)
+sellers['timeliness_fast'] = sellers['timeliness'].str.count('fast')
+sellers['timeliness_delay'] = sellers['timeliness'].str.count('delay')
+
+sellers['customer_delivery_time_delay_percentage'] = (sellers['timeliness_delay'] / (sellers['timeliness_delay']+sellers['timeliness_fast']))*100
+
+#Rating Seller by delivery delay rate
+def late_delivery(x):
+    if 0<=x<=1:
+        return "5"
+    elif 1<x<=2:
+        return "4"
+    elif 2<x<=3:
+        return "3"
+    elif 3<x<=4:
+        return "2"
+    elif 10<=x<=20:
+        return "1"
+    else:
+        return '1'
+
+sellers['seller_order_delivery_score'] = pd.to_numeric(sellers['customer_delivery_time_delay_percentage'].apply(late_delivery))
+
+sellers.head()
+sellers.info()
+sellers.describe()
+
+## Ranking by delivery score
+import plotly.express as px
+delivery_score=sellers.groupby('seller_order_delivery_score')['seller_id'].count().reset_index(name="count_delivery_score")
+delivery_score
+
+labels=['Understandard','Standard','Above Standard','Premium' ,'Top Rated']
+fig_delivery = px.pie(delivery_score, values='count_delivery_score', names=labels,hole=.4,
+             title='Seller Performance by Delivery')
+
+fig_delivery
+fig_delivery.update_layout(legend_title="Performance Levels")
+
+#Ranking and Rating Seller by Order Numbers
+bin_labels_5 = ['1', '2', '3','4','5']
+sellers['seller_order_amount_score'] = pd.qcut(sellers['total_order_amount'],
+                              q=[0, .2, .5, .7, .9, 1],
+                              labels=bin_labels_5)
+sellers['seller_order_amount_score'].replace(['1', '2', '3','4','5'],
+                        [1,2,3,4,5], inplace=True)
+
+order_score=sellers.groupby('seller_order_amount_score')['seller_id'].count().reset_index(name="count_orders")
+order_score
+
+labels=['Basic','Standard','Above Standard','Premium' ,'Top Rated']
+fig_order_score = px.pie(order_score, values='count_orders', names=labels,hole=.4,
+             title='Seller Performance by Orders')
+
+fig_order_score
+fig_order_score.update_layout(legend_title="Performance Levels")
+
+#Ranking and Rating Seller by Sales Amount
+bin_labels_5 = ['1', '2', '3','4','5']
+
+sellers['seller_sales_amount_score'] = pd.qcut(sellers['total_sales'],
+                              q=[0, .2, .5, .7, .9, 1],
+                              labels=bin_labels_5)
+sellers['seller_sales_amount_score'].replace(['1', '2', '3','4','5'],
+                        [1,2,3,4,5], inplace=True)
+
+sales_score=sellers.groupby('seller_sales_amount_score')['seller_id'].count().reset_index(name="sales_score")
+sales_score
+
+labels=['Basic','Standard','Above Standard','Premium' ,'Top Rated']
+fig_sales = px.pie(sales_score, values='sales_score', names=labels,hole=.4,
+             title='Seller Performance by Sales')
+
+fig_sales
+fig_sales.update_layout(legend_title="Performance Levels")
+
+#Ranking and Rating Seller by Activity(Seller History)
+bin_labels_5 = ['1', '2', '3']
+sellers['seller_history_score'] = pd.qcut(sellers['seller_history_day'],
+                              q=[0, .3, .7, 1],
+                              labels=bin_labels_5)
+sellers['seller_history_score'].replace(['1', '2', '3'],
+                        [1,2,3], inplace=True)
+
+activity_score=sellers.groupby('seller_history_score')['seller_id'].count().reset_index(name="count_activity_score")
+activity_score
+
+labels=['New seller','Junior seller','Senior seller']
+fig_activity = px.pie(activity_score, values='count_activity_score', names=labels,hole=.4,
+             title='Seller Performance by Activity')
+
+fig_activity
+fig_activity.update_layout(legend_title="Performance Levels")
+
+#Ranking Seller by review score
+review_score=sellers['average_review_score'].value_counts(bins=[0, 1, 2, 3, 4, 5], sort=False).reset_index(name="count_review")
+review_score
+
+labelss=['Not Good(0-1)','Need Improve(1-2)','Standard(2-3)','Above Standard(3-4)' ,'Premium(4-5)']
+fig_review = px.pie(review_score, values='count_review', names=labelss,
+             title='Seller Performance Review Score', hole=.4)
+fig_review
+fig_review.update_layout(legend_title="Performance Levels")
+
+#Creating New Dataset From Score Columns
+seller_performance=sellers[['seller_id','average_review_score','seller_order_amount_score','seller_sales_amount_score','seller_order_delivery_score','seller_history_score']]
+seller_performance
+
+### Customer Analysis -- Lifetime Value
+
+import lifetimes
+from datetime import datetime
+
+## Preprocessing for customers data
+customers = df_all2.loc[:,['order_status','customer_id','order_id','purchase_date','customer_unique_id','payment_value']]
+customers = customers[customers['order_status'] == 'delivered']  ## only use delivered order's data
+customers
+
+## drop useless columns
+customers = customers.drop(['customer_id', 'order_id','order_status'], axis=1)
+
+## drop duplicates
+customers.drop_duplicates(inplace=True)
+customers.shape
+
+## check missing value
+customers.isna().sum()
+
+## check unique value
+customers['customer_unique_id'].nunique()
+
+## change "purchase_date" to Timestamp
+customers['purchase_date'] = customers.purchase_date.dt.date
+customers['purchase_date'] = pd.to_datetime(customers['purchase_date'])
+
+customers['purchase_date'].max()
+
+## today = last order's purchase date in this dataset
+today = '2018-08-29'
+date_today = datetime.strptime(today, '%Y-%m-%d')
+
+## Creating Recency: last purchase - first purchase (if only buy once, recency = 0)
+r = customers.groupby('customer_unique_id').agg(['min', 'max'])['purchase_date']
+r['recency'] = r['max'] - r['min']
+
+## Creating T: how long has this customer exist(today - first purchase date)
+r['T'] = date_today - r['min']
+r = r[['recency', 'T']]
+r
+
+## Creating Frequency: repeat purchase in Olist(if only buy once, frequency = 0)
+aggregations = {
+    'purchase_date':'count',
+    'payment_value': 'sum'}
+f = customers.groupby('customer_unique_id').agg(aggregations)
+f['frequency'] = f['purchase_date'] - 1
+f = f[['frequency']]
+
+rf = pd.merge(r,f, left_index=True, right_index=True)
+rf
+
+## RFM
+
+from lifetimes.utils import summary_data_from_transaction_data
+
+rfm = summary_data_from_transaction_data(customers, customer_id_col='customer_unique_id', datetime_col='purchase_date',
+                                    monetary_value_col ='payment_value', observation_period_end='2018-08-29',
+                                    datetime_format='%Y-%m-%d', freq='W') ## weekly is a regular period of time in many different industries
+rfm
+
+## Visualizing our customers
+px.histogram(rfm, x=rfm['frequency'],title='Frequency of purchase',
+                   labels={'frequency':'Frequency'},
+                   opacity=0.8, marginal='violin',
+            color_discrete_sequence=['indianred'])
+
+px.histogram(rfm, x=rfm['recency'],title='Recency of purchase',
+                   labels={'recency':'Recency'}, nbins=50,
+                   opacity=0.8, marginal='violin',
+                   color_discrete_sequence=['indianred'])
+
+px.histogram(rfm, x=rfm['T'],title='Time from first purchase',
+                   labels={'T':'Weeks'},
+                   opacity=0.8, marginal='violin',
+                   color_discrete_sequence=['indianred'])
+
+
+## BetaGeoFitter
+from lifetimes import BetaGeoFitter
+
+bgf = BetaGeoFitter(penalizer_coef=0.001) ## Penalizer_coef is a parameter that penalizes similarity, usually using 0.001 or 0.01 equivalents with small samples to prevent the parameter from becoming too large
+bgf.fit(rfm['frequency'], rfm['recency'], rfm['T'], verbose=True)
+bgf
+bgf.summary
+
+## Frequency recency matrix: shows the probability of future customer purchases in a given time, using recency and frequency as estimators.
+from lifetimes.plotting import plot_frequency_recency_matrix
+
+# T = Unit times(weeks)
+fig = plt.figure(figsize=(12,8))
+plot_frequency_recency_matrix(bgf, T=4,cmap='viridis')
+
+## Probability alive matrix: using recency and frequency as indicators, this matrix indicates the probability that a client is "alive" at the current moment.
+from lifetimes.plotting import plot_probability_alive_matrix
+
+fig = plt.figure(figsize=(12,8))
+plot_probability_alive_matrix(bgf,cmap='viridis')
+
+# Weeks for a future transaction
+t = 4
+rfm['expected_4week'] = round(bgf.conditional_expected_number_of_purchases_up_to_time(t, rfm['frequency'], rfm['recency'], rfm['T']), 2)
+rfm.sort_values(by='expected_4week', ascending=False)
+
+rfm['expected_8week'] = round(bgf.predict(8, rfm['frequency'], rfm['recency'], rfm['T']), 2)
+rfm['expected_12week'] = round(bgf.predict(12, rfm['frequency'], rfm['recency'], rfm['T']), 2)
+
+## seeing the individual probabilities for a random client:
+t=12
+random_person = rfm.iloc[1]
+prediction = bgf.predict(t, random_person['frequency'], random_person['recency'], random_person['T'])
+
+print("Customer '{}' has ".format(random_person.name), round(prediction, 2), "% of probability to buy an item for the next {} weeks".format(t))
+
+## Validating our model
+
+from lifetimes.utils import calibration_and_holdout_data
+
+rfm_val = calibration_and_holdout_data(customers, customer_id_col='customer_unique_id', datetime_col='purchase_date',
+                                    monetary_value_col ='payment_value', calibration_period_end='2018-05-29',
+                                    observation_period_end='2018-08-29', datetime_format='%Y-%m-%d', freq='W')
+rfm_val.head()
+
+bgf_val = BetaGeoFitter(penalizer_coef=0.001)
+bgf_val.fit(rfm_val['frequency_cal'], rfm_val['recency_cal'], rfm_val['T_cal'], verbose=True)
+bgf_val
+
+from lifetimes.plotting import plot_period_transactions
+
+fig = plt.figure(figsize=(12,8))
+ax = plot_period_transactions(bgf_val)
+ax.set_yscale('log')  ##logarithmic scaling is carried out to be able to visualize the high frequencies, since compared to frequency 0 their heights are very small.
+
+from lifetimes.plotting import plot_calibration_purchases_vs_holdout_purchases
+
+fig = plt.figure(figsize=(12,8))
+plot_calibration_purchases_vs_holdout_purchases(model=bgf_val, calibration_holdout_matrix=rfm_val)
+
+## Gamma-Gamma model
+## using the monetary_value to give an estimate of the profitability of each client
+## this model is to work only with observations with a purchase frequency greater than 0
+rfm_gg = rfm[rfm['frequency'] > 0]
+len(rfm_gg)
+
+rfm_gg[['monetary_value', 'frequency']].corr()
+
+from lifetimes import GammaGammaFitter
+
+ggf = GammaGammaFitter(penalizer_coef = 0.0)
+ggf.fit(rfm_gg['frequency'], rfm_gg['monetary_value'])
+ggf
+
+rfm['avg_transaction'] = round(ggf.conditional_expected_average_profit(rfm_gg['frequency'],
+                                                     rfm_gg['monetary_value']), 2)
+rfm['avg_transaction'] = rfm['avg_transaction'].fillna(0)
+rfm.sort_values(by='avg_transaction', ascending=False)
+
+## use DCF method to calculate CLV
+## DCF = Discount Cash Flow DCF 现金流折现，得到用户总体价值的当下估值
+rfm['CLV'] = round(ggf.customer_lifetime_value(bgf, rfm['frequency'],
+                    rfm['recency'], rfm['T'], rfm['monetary_value'],
+                    time=26, discount_rate=0.01, freq='W'))
+
+rfm.sort_values(by='CLV', ascending=False)
+
+clusters = rfm.drop(rfm.iloc[:, 0:4], axis=1)
+
+## Clustering our forecasts
+from sklearn.preprocessing import StandardScaler
+
+scaler = StandardScaler()
+scaled = scaler.fit_transform(clusters)
+scaled
+## StandardScaler() 标准化数据，保证每个维度数据方差为1.均值为0(把训练数据转换成标准的正态分布)。使据测结果不会被某些维度过大的特征值而主导。
+
+from sklearn.cluster import KMeans
+
+wcss = []
+for i in range(1, 6):
+    kmeans = KMeans(n_clusters=i, max_iter=1000, random_state=0)
+    kmeans.fit(scaled)
+    wcss.append(kmeans.inertia_)
+plt.plot(range(1, 6), wcss)
+plt.title('Elbow Method')
+plt.xlabel('Number of clusters')
+plt.ylabel('WCSS')
+plt.show()
+## Use elbow method to find best k, here k=3
+
+model = KMeans(n_clusters = 3, max_iter = 1000)
+model.fit(scaled)
+labels = model.labels_
+
+clusters['cluster'] = labels
+clusters['cluster'].value_counts()
+
+## Here we reduce 5 features to 2 components then the clusters can be plot in a 2D graph
+from sklearn.decomposition import PCA
+
+features = ["expected_4week", "expected_8week", "expected_12week", "avg_transaction", "CLV"]
+
+pca = PCA(n_components=2)
+components = pca.fit_transform(clusters[features])
+npc = np.array(components)
+dfc = pd.DataFrame(npc, columns=['PC1','PC2'])
+dfc = dfc.set_index(clusters.index)
+dfc['label'] = clusters['cluster']
+dfc
+
+## scatter plot
+px.scatter(dfc, x="PC1", y="PC2", color="label", width=900, height=600)
+
+clusters.groupby('cluster').agg(['min','max'])['CLV']
+
+clusters['cluster'].replace(to_replace=[0,1,2], value = ['Non-Profitable','Very Profitable', 'Profitable'], inplace=True)
+clusters.sort_values(by='CLV', ascending=False)
+
+
